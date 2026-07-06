@@ -1,0 +1,13 @@
+# deps / build
+node_modules/
+.next/
+out/
+tsconfig.tsbuildinfo
+
+# okolina — NIKAD stvarne vrijednosti u repo (repo je javan)
+.env
+.env.local
+.env*.local
+
+# os
+.DS_Store
