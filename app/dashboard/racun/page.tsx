@@ -6,7 +6,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { FileDown, Mail, Stamp, Zap } from "lucide-react";
+import { FileDown, Loader2, Mail, RefreshCw, Send, Stamp, Zap } from "lucide-react";
 import { DashboardLjuska } from "@/components/ljuska";
 import { useTenant } from "@/lib/tenant";
 import { fiskal, otvoriPdf, type RacunDetalj } from "@/lib/fiskal";
@@ -68,6 +68,28 @@ function Detalj() {
 
   const jeSkica = racun.status === "nacrt";
   const jeFiskalni = racun.tip === "fiskalni_b2c";
+  const jeEracun = racun.tip === "eracun_b2b" || racun.tip === "eracun_b2g";
+
+  // Slanje posredniku doku (~2-5 s) — poruka ovisi o ishodu (npr. AMS blok).
+  async function posaljiEracun() {
+    if (!odabrani || !racun) return;
+    setRadi(true);
+    setGreska(null);
+    setPoruka(null);
+    try {
+      const r = await fiskal.posaljiEracun(odabrani.tenantId, racun.id);
+      setPoruka(
+        r.napomena
+          ? `eRačun poslan (doku ID ${r.dokuId}) — ${r.napomena}`
+          : `eRačun poslan posredniku (doku ID ${r.dokuId})${r.eracunStatus ? ` — status: ${r.eracunStatus}` : ""}.`,
+      );
+      ucitaj();
+    } catch (e) {
+      setGreska((e as Error).message);
+    } finally {
+      setRadi(false);
+    }
+  }
 
   return (
     <>
@@ -92,6 +114,17 @@ function Detalj() {
             className="flex items-center gap-1.5 rounded-lg bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-[#013a86] disabled:opacity-50"
           >
             <Stamp className="h-4 w-4" aria-hidden /> Izdaj (dodijeli broj)
+          </button>
+        ) : null}
+        {jeEracun && racun.status === "izdano" && !racun.eracun?.dokuId ? (
+          <button
+            type="button"
+            disabled={radi}
+            onClick={() => void posaljiEracun()}
+            className="flex items-center gap-1.5 rounded-lg bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-[#013a86] disabled:opacity-50"
+          >
+            {radi ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
+            {radi ? "Slanje eRačuna…" : "Pošalji eRačun"}
           </button>
         ) : null}
         {jeFiskalni && !racun.jir ? (
@@ -140,6 +173,45 @@ function Detalj() {
           </form>
         ) : null}
       </div>
+
+      {jeEracun ? (
+        <div className="mt-5 rounded-xl border border-rub bg-povrsina p-4 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="font-bold">eRačun — razmjena (doku)</p>
+            {racun.eracun?.dokuId ? (
+              <button
+                type="button"
+                disabled={radi}
+                onClick={() => void akcija(() => fiskal.eracunStatus(odabrani.tenantId, racun.id), "Status razmjene osvježen.")}
+                className="flex items-center gap-1.5 rounded-lg border border-rub px-3 py-1.5 text-xs font-bold text-navy hover:border-navy/30 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${radi ? "animate-spin" : ""}`} aria-hidden /> Osvježi status
+              </button>
+            ) : null}
+          </div>
+          {racun.eracun?.dokuId ? (
+            <>
+              <p className="mt-2">Status razmjene: {eracunBadge(racun.eracun.status)}</p>
+              <p className="mt-1">doku ID: <span className="font-mono">{racun.eracun.dokuId}</span></p>
+              {racun.eracun.zadnjaProvjera ? (
+                <p className="mt-1 text-muted">
+                  zadnja provjera: <span className="font-mono">{racun.eracun.zadnjaProvjera.slice(0, 16).replace("T", " ")}</span>
+                </p>
+              ) : null}
+              {racun.eracun.deliveryBlock ? (
+                <p className="mt-1 text-opasnost">Dostava blokirana ({racun.eracun.deliveryBlock}) — primatelj nije registriran za eDelivery.</p>
+              ) : null}
+            </>
+          ) : (
+            <p className="mt-2 text-muted">Još nije poslan posredniku.</p>
+          )}
+          {racun.eracun?.greska ? (
+            <div className="mt-3 whitespace-pre-wrap rounded-lg bg-[#F8E2E0] px-3 py-2 text-opasnost">
+              {racun.eracun.greska}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {jeFiskalni ? (
         <div className="mt-5 rounded-xl border border-rub bg-povrsina p-4 text-sm">
@@ -201,5 +273,23 @@ function Detalj() {
         </p>
       ) : null}
     </>
+  );
+}
+
+// Badge statusa doku razmjene — FISCALIZED znači da je Porezna prihvatila račun.
+function eracunBadge(status: string | null) {
+  if (!status) return <em className="text-muted">nepoznat</em>;
+  const [boja, naziv] =
+    status === "FISCALIZED"
+      ? ["bg-[#E0F1E5] text-uspjeh", "Fiskaliziran na Poreznoj upravi"]
+      : status === "DELIVERED"
+        ? ["bg-[#E0F1E5] text-uspjeh", "Dostavljen primatelju"]
+        : status === "IMPORTED"
+          ? ["bg-[#E7EEF8] text-[#1D4ED8]", "Zaprimljen kod posrednika"]
+          : ["bg-[#ECEFF2] text-muted", status];
+  return (
+    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold ${boja}`}>
+      {status === naziv ? status : `${status} — ${naziv}`}
+    </span>
   );
 }

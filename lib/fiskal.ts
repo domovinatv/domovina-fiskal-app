@@ -92,6 +92,19 @@ export interface RacunDetalj extends RacunSazetak {
   fiskalGreska?: string | null;
   poslanoEmail: { kada: string; na: string } | null;
   pdf: string;
+  /// eRačun 2.0 (doku) — backend ga vraća samo za tipove eracun_b2b/eracun_b2g.
+  eracun?: {
+    dokuId: number | null;
+    status: "IMPORTED" | "DELIVERED" | "FISCALIZED" | string | null;
+    deliveryBlock: string | null;
+    zadnjaProvjera: string | null;
+    greska: string | null;
+  };
+}
+
+export interface KpdStavka {
+  sifra: string;
+  naziv: string;
 }
 
 export interface Proizvod {
@@ -114,14 +127,19 @@ export interface Postavke {
 }
 
 export interface NoviRacunPayload {
-  tip: "PONUDA" | "PREDRACUN" | "RACUN" | "FISKALNI_B2C";
+  tip: "PONUDA" | "PREDRACUN" | "RACUN" | "FISKALNI_B2C" | "ERACUN_B2B" | "ERACUN_B2G";
   poslovniProstor: string;
   naplatniUredaj: string;
   operaterOib?: string;
   nacinPlacanja: string;
   datumDospijeca?: string;
   napomena?: string;
-  kupac?: { naziv: string; oib?: string; email?: string };
+  kupac?: {
+    naziv: string;
+    oib?: string;
+    email?: string;
+    adresa?: { ulica?: string; grad?: string; postanskiBroj?: string; drzava?: string };
+  };
   stavke: {
     proizvodId?: number;
     naziv?: string;
@@ -158,6 +176,22 @@ export const fiskal = {
       tijelo: na ? { na } : {},
       tenantId,
     }),
+  // ── eRačun 2.0 (doku posrednik) ──
+  posaljiEracun: (tenantId: number, id: number) =>
+    poziv<{ ok: boolean; dokuId: number; eracunStatus: string | null; deliveryBlock: string | null; napomena?: string }>(
+      `/racun/${id}/posalji-eracun`,
+      { metoda: "POST", tenantId },
+    ),
+  eracunStatus: (tenantId: number, id: number) =>
+    poziv<{ ok: boolean; dokuId: number; eracunStatus: string | null }>(`/racun/${id}/eracun-status`, { tenantId }),
+  provjeriPrimatelja: (tenantId: number, oib: string) =>
+    poziv<{ ok: boolean; oib: string; registriran: boolean; mpsEndpoint?: string }>("/eracun/provjeri-primatelja", {
+      metoda: "POST",
+      tijelo: { oib },
+      tenantId,
+    }),
+  kpdTrazi: (tenantId: number, q: string, limit = 20) =>
+    poziv<{ rezultati: KpdStavka[] }>(`/kpd?q=${encodeURIComponent(q)}&limit=${limit}`, { tenantId }),
   proizvodi: (tenantId: number) => poziv<{ proizvodi: Proizvod[] }>("/proizvod", { tenantId }),
   postavke: (tenantId: number) => poziv<Postavke>("/postavke", { tenantId }),
   noviProstor: (tenantId: number, p: { oznaka: string; ulica?: string; naselje?: string; primjenaOd: string }) =>

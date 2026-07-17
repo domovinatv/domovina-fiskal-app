@@ -12,6 +12,8 @@ const TIP_NAZIVI: Record<string, string> = {
   predracun: "Predračun",
   racun: "Račun",
   fiskalni_b2c: "Fiskalni B2C",
+  eracun_b2b: "eRačun (B2B)",
+  eracun_b2g: "eRačun (B2G)",
 };
 
 export function tipNaziv(tip: string): string {
