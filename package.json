@@ -7,7 +7,10 @@
     "dev": "next dev",
     "build": "next build",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:test": "NEXT_PUBLIC_FISKAL_API_URL=https://fiskal-test.domovina.ai/api/v1 next build",
+    "deploy:test": "npm run build:test && npx wrangler pages deploy out --project-name domovina-fiskal-app-test",
+    "deploy": "npm run build && npx wrangler pages deploy out --project-name domovina-fiskal-app"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
