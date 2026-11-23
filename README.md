@@ -45,3 +45,23 @@ s `ADMIN_SKRIPTA_TOKEN`). `npm run dev` (Next na :3000) radi samo za izgled stra
 
 Ide s backendom: `npm run deploy:test` / `npm run deploy` u `domovina-fiskal/backend`
 pozivaju `build:app`, koji builda ovaj repo i kopira `out/` u Worker assets.
+
+Zaglavlja stranica (`X-Frame-Options`, CSP i ostala) piše `build-app.sh` u
+`app-dist/_headers`. CSP dopušta samo isti origin; `'unsafe-inline'` za skripte i
+stilove treba Next static export (inline `self.__next_f.push`). Ako app ikad doda
+vanjski izvor (font, slike, analitika), CSP se mijenja u `build-app.sh`, ne ovdje.
+
+## Povijest: Cloudflare Pages (u mirovini)
+
+Do studenog 2026. dashboard je bio zaseban Pages projekt (`domovina-fiskal-app` na
+`fiskal-app.domovina.ai`, `domovina-fiskal-app-test` na `fiskal-app-test.domovina.ai`)
+s GoTrue prijavom (Google, e-mail OTP) preko `api.domovina.ai`. Od lanca „passkey”
+(S5 TEST, S6 PROD, 23. 11. 2026.) servira ga fiskal Worker na `/app`.
+
+- Stare domene trajno (301) preusmjerava mali Worker `fiskal-app-preusmjeravanje`
+  (`backend/wrangler.preusmjeravanje.toml`) na `https://fiskal(-test).domovina.ai/app/…`,
+  uz zadržanu putanju.
+- Pages projekti zasad postoje, ali se više ne deployaju (iz ovog repoa su maknute
+  Pages skripte); brisanje je zasebna odluka.
+- Stare domene su maknute iz GoTrue `ADDITIONAL_REDIRECT_URLS`, pa stari app ne može
+  prijaviti nikoga.
