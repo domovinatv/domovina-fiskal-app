@@ -1,10 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Statički export → Cloudflare Pages (SPA). Svi podaci se čitaju client-side
-  // preko fiskal API-ja (Bearer JWT + X-Tenant-Id) — nema server runtimea.
-  // Detalj računa koristi ?id= query param (bez dinamičkih SSR ruta),
-  // pa export ostaje čist — isti obrazac kao pinka-finance/app.
+  // Statički export koji servira fiskal Worker kao static assets na /app
+  // (backend: wrangler.toml [assets], scripts/build-app.sh). API je na istom
+  // originu (/api/v1, kolačić sesije), pa nema CORS-a ni varijabli po okolini.
+  // Detalj računa koristi ?id= query param (bez dinamičkih ruta), pa export
+  // ostaje čist. trailingSlash ostaje false: Workers assets (auto-trailing-slash)
+  // /app/dashboard serviraju iz dashboard.html.
   output: "export",
+  basePath: "/app",
   reactStrictMode: true,
   poweredByHeader: false,
   images: { unoptimized: true },

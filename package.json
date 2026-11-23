@@ -2,18 +2,15 @@
   "name": "domovina-fiskal-app",
   "version": "0.1.0",
   "private": true,
-  "description": "Customer dashboard za fiskal.domovina.ai — prijava dijeljenim Domovina računom (GoTrue SSO), self-service izdavanje HR (fiskaliziranih) računa",
+  "description": "Customer dashboard za fiskal.domovina.ai/app — prijava passkeyem (pozivnica), self-service izdavanje HR (fiskaliziranih) računa. Servira ga fiskal Worker (static assets).",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit",
-    "build:test": "NEXT_PUBLIC_FISKAL_API_URL=https://fiskal-test.domovina.ai/api/v1 next build",
-    "deploy:test": "npm run build:test && npx wrangler pages deploy out --project-name domovina-fiskal-app-test",
-    "deploy": "npm run build && npx wrangler pages deploy out --project-name domovina-fiskal-app"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.4",
+    "@simplewebauthn/browser": "^14.0.0",
     "lucide-react": "^0.460.0",
     "next": "^14.2.35",
     "react": "^18.3.1",

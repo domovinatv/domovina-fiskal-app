@@ -1,14 +1,12 @@
 "use client";
 
-// Fiskal API klijent — jedino mjesto koje zove fiskal.domovina.ai/api/v1.
-// Na SVAKI poziv lijepi 'Authorization: Bearer <GoTrue access_token>' +
-// 'X-Tenant-Id: <odabrani tenant>'. Podaci su u D1 iza Workera — dashboard
-// NE čita Supabase (Supabase je samo prijava). Vidi backend repo:
-// domovina-fiskal/docs/knowledge/16-dashboard-sso.md.
+// Fiskal API klijent — jedino mjesto koje zove /api/v1. Dashboard i API su na
+// istom originu (fiskal Worker servira app na /app), pa prijavu nosi kolačić
+// sesije `__Host-fiskal_app` (credentials: same-origin), bez Authorization
+// zaglavlja; 'X-Tenant-Id' bira tenant. Mutacije šalju Origin same (preglednik),
+// a backend ga provjerava. Vidi backend repo: domovina-fiskal/docs/passkey/.
 
-import { supabaseBrowser } from "@/lib/supabase";
-
-const API_URL = (process.env.NEXT_PUBLIC_FISKAL_API_URL ?? "https://fiskal.domovina.ai/api/v1").replace(/\/$/, "");
+const API_URL = "/api/v1";
 
 export class FiskalGreska extends Error {
   constructor(
@@ -20,30 +18,24 @@ export class FiskalGreska extends Error {
   }
 }
 
-async function accessToken(): Promise<string> {
-  const { data } = await supabaseBrowser().auth.getSession();
-  const token = data.session?.access_token;
-  if (!token) throw new FiskalGreska("Nisi prijavljen", 401);
-  return token;
-}
-
 async function poziv<T>(
   put: string,
-  opts: { metoda?: "GET" | "POST"; tijelo?: unknown; tenantId?: number | null } = {},
+  opts: { metoda?: "GET" | "POST" | "DELETE"; tijelo?: unknown; tenantId?: number | null } = {},
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${await accessToken()}`,
-  };
+  const headers: Record<string, string> = {};
   if (opts.tenantId) headers["X-Tenant-Id"] = String(opts.tenantId);
   if (opts.tijelo !== undefined) headers["Content-Type"] = "application/json";
 
   const r = await fetch(`${API_URL}${put}`, {
     method: opts.metoda ?? "GET",
+    credentials: "same-origin",
     headers,
     body: opts.tijelo !== undefined ? JSON.stringify(opts.tijelo) : undefined,
   });
   const json = (await r.json().catch(() => ({}))) as Record<string, unknown>;
   if (!r.ok) {
+    // Istekla ili opozvana sesija: AuthProvider vraća na prijavu.
+    if (r.status === 401 && typeof window !== "undefined") window.dispatchEvent(new Event(ODJAVLJEN));
     throw new FiskalGreska(
       String(json.greska ?? `Greška ${r.status}`),
       r.status,
@@ -51,6 +43,14 @@ async function poziv<T>(
     );
   }
   return json as T;
+}
+
+/// Događaj na `window` kad API vrati 401 (sesija istekla ili opozvana).
+export const ODJAVLJEN = "fiskal:odjavljen";
+
+/// Poziv bez tenanta (prijava, poziv, moji passkeyi) — isti oblik grešaka.
+export function api<T>(put: string, opts: { metoda?: "GET" | "POST" | "DELETE"; tijelo?: unknown; tenantId?: number | null } = {}) {
+  return poziv<T>(put, opts);
 }
 
 // ── Tipovi odgovora (podskup koji dashboard koristi) ──
@@ -153,9 +153,48 @@ export interface NoviRacunPayload {
   status?: "nacrt" | "izdano";
 }
 
+export interface Ja {
+  email: string;
+  ime: string | null;
+  korisnikId: number;
+  prijava: { metoda: string; od: string; do: string };
+  tenanti: MojTenant[];
+}
+
+export interface MojPasskey {
+  id: number;
+  oznaka: string | null;
+  stvoren: string;
+  zadnjeKoristen: string | null;
+}
+
+export type Uloga = MojTenant["uloga"];
+
+export interface Clan {
+  id: number;
+  email: string;
+  ime: string | null;
+  uloga: Uloga;
+  aktivan: boolean;
+  imaPasskey: boolean;
+  korisnikAktivan: boolean | null;
+  ja: boolean;
+}
+
+export interface OtvorenaPozivnica {
+  id: number;
+  email: string;
+  ime: string | null;
+  uloga: Uloga;
+  stvorioTip: string;
+  stvorena: string;
+  istjece: string;
+}
+
 // ── Pozivi ──
 
 export const fiskal = {
+  ja: () => poziv<Ja>("/ja"),
   mojiTenanti: () => poziv<{ tenanti: MojTenant[] }>("/moji-tenanti"),
   racuni: (tenantId: number, limit = 50) =>
     poziv<{ racuni: RacunSazetak[] }>(`/racun?limit=${limit}`, { tenantId }),
@@ -193,6 +232,22 @@ export const fiskal = {
   kpdTrazi: (tenantId: number, q: string, limit = 20) =>
     poziv<{ rezultati: KpdStavka[] }>(`/kpd?q=${encodeURIComponent(q)}&limit=${limit}`, { tenantId }),
   proizvodi: (tenantId: number) => poziv<{ proizvodi: Proizvod[] }>("/proizvod", { tenantId }),
+  // ── Moji passkeyi (bez tenanta) ──
+  passkeyi: () => poziv<{ passkeyi: MojPasskey[]; dodavanje: string | null }>("/passkeyi"),
+  obrisiPasskey: (id: number) => poziv<{ ok: boolean }>(`/passkeyi/${id}`, { metoda: "DELETE" }),
+  // ── Članovi tenanta (samo vlasnik) ──
+  clanovi: (tenantId: number) =>
+    poziv<{ clanovi: Clan[]; pozivnice: OtvorenaPozivnica[] }>("/clanovi", { tenantId }),
+  pozovi: (tenantId: number, p: { email: string; ime?: string; uloga: "knjigovodja" | "operater" }) =>
+    poziv<{ id: number; email: string; istjece: string; link: string }>("/clanovi/pozivnica", {
+      metoda: "POST",
+      tijelo: p,
+      tenantId,
+    }),
+  opozoviPozivnicu: (tenantId: number, id: number) =>
+    poziv<{ ok: boolean }>(`/clanovi/pozivnica/${id}/opozovi`, { metoda: "POST", tenantId }),
+  deaktivirajClana: (tenantId: number, id: number) =>
+    poziv<{ ok: boolean }>(`/clanovi/${id}/deaktiviraj`, { metoda: "POST", tenantId }),
   postavke: (tenantId: number) => poziv<Postavke>("/postavke", { tenantId }),
   noviProstor: (tenantId: number, p: { oznaka: string; ulica?: string; naselje?: string; primjenaOd: string }) =>
     poziv<{ id: number }>("/postavke/prostor", { metoda: "POST", tijelo: p, tenantId }),
@@ -202,13 +257,11 @@ export const fiskal = {
     poziv<{ id: number }>("/postavke/operater", { metoda: "POST", tijelo: o, tenantId }),
 };
 
-/// PDF traži Authorization header (ne može običan <a href>) — fetch + blob.
+/// PDF traži X-Tenant-Id zaglavlje (ne može običan <a href>) — fetch + blob.
 export async function otvoriPdf(tenantId: number, racunId: number): Promise<void> {
   const r = await fetch(`${API_URL}/racun/${racunId}/pdf`, {
-    headers: {
-      Authorization: `Bearer ${await accessToken()}`,
-      "X-Tenant-Id": String(tenantId),
-    },
+    credentials: "same-origin",
+    headers: { "X-Tenant-Id": String(tenantId) },
   });
   if (!r.ok) throw new FiskalGreska(`PDF nije dostupan (${r.status})`, r.status);
   const blob = await r.blob();

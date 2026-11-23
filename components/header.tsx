@@ -9,15 +9,17 @@ import { Building2, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useTenant } from "@/lib/tenant";
 
-const NAV = [
+const NAV: { put: string; naziv: string; samoVlasnik?: boolean }[] = [
   { put: "/dashboard", naziv: "Računi" },
   { put: "/dashboard/novi", naziv: "Novi dokument" },
   { put: "/dashboard/proizvodi", naziv: "Proizvodi" },
   { put: "/dashboard/postavke", naziv: "Postavke" },
+  { put: "/dashboard/clanovi", naziv: "Članovi", samoVlasnik: true },
+  { put: "/dashboard/passkeyi", naziv: "Moji passkeyi" },
 ];
 
 export function Header() {
-  const { user, signOut } = useAuth();
+  const { ja, odjava } = useAuth();
   const { tenanti, odabrani, odaberi } = useTenant();
   const pathname = usePathname();
 
@@ -36,7 +38,7 @@ export function Header() {
         </Link>
 
         <nav className="flex gap-4 text-sm font-semibold">
-          {NAV.map((n) => (
+          {NAV.filter((n) => !n.samoVlasnik || odabrani?.uloga === "vlasnik").map((n) => (
             <Link
               key={n.put}
               href={n.put}
@@ -65,12 +67,12 @@ export function Header() {
               </select>
             </label>
           ) : null}
-          {user ? (
+          {ja ? (
             <button
               type="button"
-              onClick={() => void signOut()}
+              onClick={() => void odjava()}
               className="flex items-center gap-1.5 text-sm text-muted hover:text-navy"
-              title={user.email ?? undefined}
+              title={ja.email}
             >
               <LogOut className="h-4 w-4" aria-hidden /> Odjava
             </button>

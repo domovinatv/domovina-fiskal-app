@@ -1,7 +1,7 @@
 "use client";
 
 // Tenant context — M od N tenanata s dropdown prebacivanjem. Lista dolazi iz
-// GET /moji-tenanti (fiskal API, samo JWT); odabir se pamti u localStorage pa
+// GET /moji-tenanti (fiskal API, kolačić sesije); odabir se pamti u localStorage pa
 // preživljava refresh. Svi fiskal pozivi su scope-ani na odabrani tenant.
 
 import {
@@ -29,7 +29,7 @@ interface TenantState {
 const TenantContext = createContext<TenantState | null>(null);
 
 export function TenantProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { ja } = useAuth();
   const [tenanti, setTenanti] = useState<MojTenant[]>([]);
   const [odabraniId, setOdabraniId] = useState<number | null>(null);
   const [ucitavanje, setUcitavanje] = useState(true);
@@ -54,9 +54,15 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Ponovno nakon svake prijave (ja.korisnikId); odjava čisti popis.
+  const korisnikId = ja?.korisnikId ?? null;
   useEffect(() => {
-    if (user && !user.is_anonymous) void osvjezi();
-  }, [user, osvjezi]);
+    if (korisnikId != null) void osvjezi();
+    else {
+      setTenanti([]);
+      setOdabraniId(null);
+    }
+  }, [korisnikId, osvjezi]);
 
   const value: TenantState = {
     tenanti,

@@ -5,7 +5,7 @@ import { Providers } from "@/components/providers";
 export const metadata: Metadata = {
   title: "DOMOVINA Fiskal — dashboard",
   description:
-    "Self-service izdavanje HR (fiskaliziranih) računa — prijava dijeljenim Domovina računom.",
+    "Self-service izdavanje HR (fiskaliziranih) računa — prijava passkeyem.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

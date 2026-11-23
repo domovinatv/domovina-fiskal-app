@@ -2,7 +2,7 @@
 
 // Zajednička ljuska dashboard stranica: AuthGate (prijava) → Header (tenant
 // switcher) → sadržaj. Ako korisnik nema nijedan membership, jasna poruka —
-// pristup otvara superuser u fiskal adminu (nema samoregistracije u v1).
+// pristup otvara pozivnica (nema samoregistracije).
 
 import { AuthGate } from "@/lib/auth";
 import { useTenant } from "@/lib/tenant";
@@ -39,8 +39,9 @@ function TenantStraza({ children }: { children: React.ReactNode }) {
       <div className="mx-auto max-w-lg rounded-xl border border-rub bg-povrsina p-6 text-sm">
         <p className="font-semibold">Nemaš pristup nijednom tenantu.</p>
         <p className="mt-2 text-muted">
-          Pristup dashboardu dodjeljuje administrator servisa (po e-mail adresi kojom si
-          prijavljen/a). Ako bi ovdje trebao/la vidjeti svoju firmu, javi se administratoru.
+          Pristup firmi otvara pozivnica (od vlasnika firme ili administratora servisa) ili ga je
+          netko u međuvremenu zatvorio. Ako bi ovdje trebao/la vidjeti svoju firmu, javi se vlasniku
+          ili administratoru.
         </p>
       </div>
     );
