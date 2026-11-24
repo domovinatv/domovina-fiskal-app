@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { DashboardLjuska } from "@/components/ljuska";
 import { useTenant } from "@/lib/tenant";
+import { LOGO_MAX_BAJTOVA, svgUPng } from "@/lib/logo";
 import { fiskal, otvoriPregledIzgleda, type Branding, type BrandingUnos, type Postavke } from "@/lib/fiskal";
 
 export default function PostavkeStranica() {
@@ -124,7 +125,6 @@ function PostavkePloca() {
 // ── Izgled PDF računa: boja, logo, podnožje (backend /postavke/branding) ──
 
 const ZADANA_BOJA = "#002F6C";
-const LOGO_MAX = 200 * 1024;
 
 function IzgledRacuna({ tenantId, smijeMijenjati }: { tenantId: number; smijeMijenjati: boolean }) {
   const [spremljeno, setSpremljeno] = useState<Branding | null>(null);
@@ -170,11 +170,21 @@ function IzgledRacuna({ tenantId, smijeMijenjati }: { tenantId: number; smijeMij
     }
   }
 
-  function odaberiLogo(datoteka: File | undefined) {
+  async function odaberiLogo(datoteka: File | undefined) {
     setGreska(null);
     if (!datoteka) return;
-    if (!["image/png", "image/jpeg"].includes(datoteka.type)) return setGreska("Logo mora biti PNG ili JPEG.");
-    if (datoteka.size > LOGO_MAX) return setGreska(`Logo je ${Math.round(datoteka.size / 1024)} KB — najviše je 200 KB.`);
+    // SVG se pretvara u PNG ovdje (lib/logo.ts) — PDF prima samo PNG/JPEG.
+    if (datoteka.type === "image/svg+xml" || datoteka.name.toLowerCase().endsWith(".svg")) {
+      try {
+        setLogo(await svgUPng(datoteka));
+        setLogoPromijenjen(true);
+      } catch (e) {
+        setGreska((e as Error).message);
+      }
+      return;
+    }
+    if (!["image/png", "image/jpeg"].includes(datoteka.type)) return setGreska("Logo mora biti SVG, PNG ili JPEG.");
+    if (datoteka.size > LOGO_MAX_BAJTOVA) return setGreska(`Logo je ${Math.round(datoteka.size / 1024)} KB — najviše je 200 KB.`);
     const citac = new FileReader();
     citac.onload = () => {
       setLogo(String(citac.result));
@@ -208,8 +218,8 @@ function IzgledRacuna({ tenantId, smijeMijenjati }: { tenantId: number; smijeMij
           {smijeMijenjati ? (
             <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
               <label className="cursor-pointer rounded-lg border border-rub bg-white px-3 py-1.5 hover:border-navy/40">
-                Odaberi PNG/JPEG…
-                <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => odaberiLogo(e.target.files?.[0])} />
+                Odaberi SVG/PNG/JPEG…
+                <input type="file" accept="image/svg+xml,.svg,image/png,image/jpeg" className="hidden" onChange={(e) => void odaberiLogo(e.target.files?.[0])} />
               </label>
               {logo ? (
                 <button type="button" className="text-muted underline" onClick={() => { setLogo(null); setLogoPromijenjen(true); }}>
@@ -218,7 +228,7 @@ function IzgledRacuna({ tenantId, smijeMijenjati }: { tenantId: number; smijeMij
               ) : null}
             </div>
           ) : null}
-          <p className="mt-1 text-xs text-muted">Najviše 200 KB. Najbolje vodoravni logo s prozirnom pozadinom.</p>
+          <p className="mt-1 text-xs text-muted">SVG se pretvara u PNG visoke rezolucije. PNG/JPEG najviše 200 KB. Najbolje vodoravni logo s prozirnom pozadinom.</p>
         </div>
 
         <div className="space-y-4">
