@@ -25,6 +25,14 @@ export async function prijaviPasskeyem(): Promise<void> {
   await api("/prijava/potvrdi", { metoda: "POST", tijelo: { odgovor } });
 }
 
+/// Pozivnica za postojeći račun: prijava passkeyem koji već postoji prihvaća pozivnicu
+/// (članstvo u firmi + kolačić sesije), bez izrade novog ključa.
+export async function prihvatiPrijavom(token: string): Promise<void> {
+  const opcije = await api<PublicKeyCredentialRequestOptionsJSON>("/prijava/opcije", { metoda: "POST", tijelo: {} });
+  const odgovor: AuthenticationResponseJSON = await startAuthentication({ optionsJSON: opcije });
+  await api("/poziv/prijava", { metoda: "POST", tijelo: { token, odgovor } });
+}
+
 /// Novi passkey iz opcija koje je dao server (pozivnica ili „dodaj passkey”).
 export function izradiPasskey(opcije: PublicKeyCredentialCreationOptionsJSON): Promise<RegistrationResponseJSON> {
   return startRegistration({ optionsJSON: opcije });
@@ -42,7 +50,7 @@ export function porukaGreske(e: unknown, radnja: "prijava" | "izrada"): string {
   if (e instanceof FiskalGreska) return e.message;
   const ime = e instanceof WebAuthnError ? (e.cause as Error | undefined)?.name : (e as Error | undefined)?.name;
   if (e instanceof WebAuthnError && e.code === "ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED") {
-    return "Ovaj uređaj već ima passkey za tvoj račun. Odaberi drugi uređaj ili upravitelj lozinki.";
+    return "Ovaj uređaj već ima passkey za tvoj račun — klikni „Prijavi se postojećim passkeyem”.";
   }
   if (ime === "NotAllowedError" || ime === "AbortError") {
     return radnja === "prijava"

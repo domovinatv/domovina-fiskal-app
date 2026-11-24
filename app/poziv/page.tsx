@@ -5,6 +5,8 @@
 // iz adrese (history.replaceState), da ne ostane u povijesti ni na dijeljenom ekranu.
 // Opcije se dohvate odmah (prikaz e-maila i firme), a passkey nastaje tek na klik,
 // da preglednik vidi korisnikovu gestu izravno prije navigator.credentials.create.
+// Ako račun s tim e-mailom već ima passkey (npr. pozivnica u drugu firmu), glavna radnja je
+// prijava postojećim passkeyem (/poziv/prijava): novi ključ ne nastaje, pozivnica se potroši.
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -13,10 +15,11 @@ import type { PublicKeyCredentialCreationOptionsJSON } from "@simplewebauthn/bro
 import { KeyRound } from "lucide-react";
 import { api } from "@/lib/fiskal";
 import { PomocPasskey, useAuth } from "@/lib/auth";
-import { izradiPasskey, podrzan, porukaGreske } from "@/lib/passkey";
+import { izradiPasskey, podrzan, porukaGreske, prihvatiPrijavom } from "@/lib/passkey";
 
 interface PozivOpcije {
   opcije: PublicKeyCredentialCreationOptionsJSON;
+  imaPasskey: boolean;
   email: string;
   ime: string | null;
   tenant: { id: number; naziv: string | null } | null;
@@ -80,6 +83,44 @@ export default function PozivStranica() {
     }
   }
 
+  async function prijava() {
+    if (stanje.vrsta !== "spremno") return;
+    setRadi(true);
+    setGreska(null);
+    try {
+      await prihvatiPrijavom(token.current);
+      await osvjezi();
+      router.replace("/dashboard");
+    } catch (e) {
+      setGreska(porukaGreske(e, "prijava"));
+      setRadi(false);
+      void ucitaj();
+    }
+  }
+
+  const obrazacIzrade = (
+    <>
+      <label className="mt-5 block text-sm">
+        <span className="font-semibold">Naziv uređaja (neobavezno)</span>
+        <input
+          value={oznaka}
+          onChange={(e) => setOznaka(e.target.value)}
+          maxLength={60}
+          placeholder="npr. Laptop u uredu"
+          className="mt-1 w-full rounded-lg border border-rub px-3 py-2 text-sm focus:border-navy/40 focus:outline-none"
+        />
+      </label>
+      <button
+        type="button"
+        onClick={() => void izradi()}
+        disabled={radi || !podrzan()}
+        className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-navy px-4 py-3 text-sm font-bold text-white hover:bg-[#013a86] disabled:opacity-50"
+      >
+        <KeyRound className="h-4 w-4" aria-hidden /> {radi ? "Čekam passkey…" : "Izradi passkey i uđi"}
+      </button>
+    </>
+  );
+
   return (
     <div className="mx-auto mt-16 max-w-md rounded-xl border border-rub bg-white p-8 shadow-sm">
       <h1 className="text-xl font-bold text-navy">Pozivnica u DOMOVINA Fiskal</h1>
@@ -124,24 +165,39 @@ export default function PozivStranica() {
             Prijava ide passkeyem: otiskom prsta, licem, PIN-om uređaja ili upraviteljem lozinki.
             Lozinke nema.
           </p>
-          <label className="mt-5 block text-sm">
-            <span className="font-semibold">Naziv uređaja (neobavezno)</span>
-            <input
-              value={oznaka}
-              onChange={(e) => setOznaka(e.target.value)}
-              maxLength={60}
-              placeholder="npr. Laptop u uredu"
-              className="mt-1 w-full rounded-lg border border-rub px-3 py-2 text-sm focus:border-navy/40 focus:outline-none"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => void izradi()}
-            disabled={radi || !podrzan()}
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-navy px-4 py-3 text-sm font-bold text-white hover:bg-[#013a86] disabled:opacity-50"
-          >
-            <KeyRound className="h-4 w-4" aria-hidden /> {radi ? "Čekam passkey…" : "Izradi passkey i uđi"}
-          </button>
+          {stanje.poziv.imaPasskey && !stanje.poziv.noviPasskey ? (
+            <>
+              <p className="mt-3 text-sm text-muted">
+                Već imaš passkey za ovaj račun — prijavi se njime i pozivnica je prihvaćena.
+              </p>
+              <button
+                type="button"
+                onClick={() => void prijava()}
+                disabled={radi || !podrzan()}
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-navy px-4 py-3 text-sm font-bold text-white hover:bg-[#013a86] disabled:opacity-50"
+              >
+                <KeyRound className="h-4 w-4" aria-hidden /> {radi ? "Čekam passkey…" : "Prijavi se postojećim passkeyem"}
+              </button>
+              <details className="mt-4 text-sm text-muted">
+                <summary className="cursor-pointer">Želim izraditi novi passkey na ovom uređaju</summary>
+                {obrazacIzrade}
+              </details>
+            </>
+          ) : (
+            <>
+              {obrazacIzrade}
+              {!stanje.poziv.noviPasskey ? (
+                <button
+                  type="button"
+                  onClick={() => void prijava()}
+                  disabled={radi || !podrzan()}
+                  className="mt-3 w-full text-center text-sm text-navy underline hover:text-crvena disabled:opacity-50"
+                >
+                  Već imam passkey — prijavi se postojećim passkeyem
+                </button>
+              ) : null}
+            </>
+          )}
           {!podrzan() ? (
             <p className="mt-4 text-sm text-opasnost">Ovaj preglednik ne podržava passkeye. Otvori link u novijem Chromeu, Safariju, Edgeu ili Firefoxu.</p>
           ) : null}
