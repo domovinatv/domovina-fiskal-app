@@ -27,10 +27,10 @@ export async function prijaviPasskeyem(): Promise<void> {
 
 /// Pozivnica za postojeći račun: prijava passkeyem koji već postoji prihvaća pozivnicu
 /// (članstvo u firmi + kolačić sesije), bez izrade novog ključa.
-export async function prihvatiPrijavom(token: string): Promise<void> {
+export async function prihvatiPrijavom(token: string): Promise<{ tenantId: number | null }> {
   const opcije = await api<PublicKeyCredentialRequestOptionsJSON>("/prijava/opcije", { metoda: "POST", tijelo: {} });
   const odgovor: AuthenticationResponseJSON = await startAuthentication({ optionsJSON: opcije });
-  await api("/poziv/prijava", { metoda: "POST", tijelo: { token, odgovor } });
+  return api<{ tenantId: number | null }>("/poziv/prijava", { metoda: "POST", tijelo: { token, odgovor } });
 }
 
 /// Novi passkey iz opcija koje je dao server (pozivnica ili „dodaj passkey”).

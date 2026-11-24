@@ -15,6 +15,7 @@ import type { PublicKeyCredentialCreationOptionsJSON } from "@simplewebauthn/bro
 import { KeyRound } from "lucide-react";
 import { api } from "@/lib/fiskal";
 import { PomocPasskey, useAuth } from "@/lib/auth";
+import { useTenant } from "@/lib/tenant";
 import { izradiPasskey, podrzan, porukaGreske, prihvatiPrijavom } from "@/lib/passkey";
 
 interface PozivOpcije {
@@ -38,6 +39,16 @@ type Stanje =
 export default function PozivStranica() {
   const router = useRouter();
   const { osvjezi } = useAuth();
+  const tenant = useTenant();
+
+  // Nakon prihvaćanja: nova firma odmah odabrana i u popisu. Za istog korisnika (prijava
+  // postojećim passkeyem) TenantProvider se sam ne osvježava, jer se korisnikId ne mijenja.
+  async function udi(tenantId: number | null | undefined) {
+    if (tenantId != null) tenant.odaberi(tenantId);
+    await osvjezi();
+    await tenant.osvjezi();
+    router.replace("/dashboard");
+  }
   const token = useRef<string>("");
   const [stanje, setStanje] = useState<Stanje>({ vrsta: "ucitavanje" });
   const [oznaka, setOznaka] = useState("");
@@ -69,12 +80,11 @@ export default function PozivStranica() {
     setGreska(null);
     try {
       const odgovor = await izradiPasskey(stanje.poziv.opcije);
-      await api("/poziv/potvrdi", {
+      const r = await api<{ tenantId: number | null }>("/poziv/potvrdi", {
         metoda: "POST",
         tijelo: { token: token.current, odgovor, oznaka: oznaka.trim() },
       });
-      await osvjezi();
-      router.replace("/dashboard");
+      await udi(r.tenantId);
     } catch (e) {
       setGreska(porukaGreske(e, "izrada"));
       setRadi(false);
@@ -88,9 +98,8 @@ export default function PozivStranica() {
     setRadi(true);
     setGreska(null);
     try {
-      await prihvatiPrijavom(token.current);
-      await osvjezi();
-      router.replace("/dashboard");
+      const r = await prihvatiPrijavom(token.current);
+      await udi(r.tenantId);
     } catch (e) {
       setGreska(porukaGreske(e, "prijava"));
       setRadi(false);
