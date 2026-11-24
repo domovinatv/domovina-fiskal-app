@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { DashboardLjuska } from "@/components/ljuska";
 import { useTenant } from "@/lib/tenant";
-import { fiskal, type Postavke } from "@/lib/fiskal";
+import { fiskal, otvoriPregledIzgleda, type Branding, type BrandingUnos, type Postavke } from "@/lib/fiskal";
 
 export default function PostavkeStranica() {
   return (
@@ -115,7 +115,186 @@ function PostavkePloca() {
         redovi={postavke.operateri.map((o) => [o.oib, o.ime ?? "—", o.aktivan ? "aktivan" : "deaktiviran"])}
         prazno="Nema operatera."
       />
+
+      <IzgledRacuna tenantId={odabrani.tenantId} smijeMijenjati={smijeMijenjati} />
     </>
+  );
+}
+
+// ── Izgled PDF računa: boja, logo, podnožje (backend /postavke/branding) ──
+
+const ZADANA_BOJA = "#002F6C";
+const LOGO_MAX = 200 * 1024;
+
+function IzgledRacuna({ tenantId, smijeMijenjati }: { tenantId: number; smijeMijenjati: boolean }) {
+  const [spremljeno, setSpremljeno] = useState<Branding | null>(null);
+  const [boja, setBoja] = useState(ZADANA_BOJA);
+  const [vlastitaBoja, setVlastitaBoja] = useState(false);
+  const [podnozje, setPodnozje] = useState("");
+  const [logo, setLogo] = useState<string | null>(null); // data URL koji se prikazuje
+  const [logoPromijenjen, setLogoPromijenjen] = useState(false);
+  const [greska, setGreska] = useState<string | null>(null);
+  const [poruka, setPoruka] = useState<string | null>(null);
+  const [radi, setRadi] = useState(false);
+
+  const postavi = useCallback((b: Branding) => {
+    setSpremljeno(b);
+    setVlastitaBoja(!!b.boja);
+    setBoja(b.boja ?? ZADANA_BOJA);
+    setPodnozje(b.podnozje ?? "");
+    setLogo(b.logo);
+    setLogoPromijenjen(false);
+  }, []);
+
+  useEffect(() => {
+    setSpremljeno(null);
+    fiskal.branding(tenantId).then(postavi).catch((e) => setGreska((e as Error).message));
+  }, [tenantId, postavi]);
+
+  const unos = (): BrandingUnos => ({
+    boja: vlastitaBoja ? boja : null,
+    podnozje: podnozje.trim() || null,
+    ...(logoPromijenjen ? { logo } : {}),
+  });
+
+  async function radnja(fn: () => Promise<void>) {
+    setRadi(true);
+    setGreska(null);
+    setPoruka(null);
+    try {
+      await fn();
+    } catch (e) {
+      setGreska((e as Error).message);
+    } finally {
+      setRadi(false);
+    }
+  }
+
+  function odaberiLogo(datoteka: File | undefined) {
+    setGreska(null);
+    if (!datoteka) return;
+    if (!["image/png", "image/jpeg"].includes(datoteka.type)) return setGreska("Logo mora biti PNG ili JPEG.");
+    if (datoteka.size > LOGO_MAX) return setGreska(`Logo je ${Math.round(datoteka.size / 1024)} KB — najviše je 200 KB.`);
+    const citac = new FileReader();
+    citac.onload = () => {
+      setLogo(String(citac.result));
+      setLogoPromijenjen(true);
+    };
+    citac.readAsDataURL(datoteka);
+  }
+
+  if (!spremljeno) return greska ? <p className="mt-8 text-sm text-opasnost">{greska}</p> : null;
+
+  return (
+    <section className="mt-10">
+      <h2 className="text-base font-bold">Izgled računa</h2>
+      <p className="mt-1 text-sm text-muted">
+        Boja, logo i tekst podnožja na PDF-u računa, ponude i predračuna (preuzimanje i e-mail kupcu).
+      </p>
+      {poruka ? <p className="mt-3 rounded-lg bg-[#E0F1E5] px-4 py-2 text-sm text-uspjeh">{poruka}</p> : null}
+      {greska ? <p className="mt-3 rounded-lg bg-[#F8E2E0] px-4 py-2 text-sm text-opasnost">{greska}</p> : null}
+
+      <div className="mt-3 grid gap-4 rounded-xl border border-rub bg-povrsina p-4 sm:grid-cols-2">
+        <div>
+          <span className="text-xs font-bold uppercase tracking-wider text-muted">Logo</span>
+          <div className="mt-2 flex h-20 items-center justify-center rounded-lg border border-dashed border-rub bg-white p-2">
+            {logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logo} alt="Logo" className="max-h-16 max-w-full object-contain" />
+            ) : (
+              <span className="text-xs text-muted">bez loga — na računu je naziv</span>
+            )}
+          </div>
+          {smijeMijenjati ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+              <label className="cursor-pointer rounded-lg border border-rub bg-white px-3 py-1.5 hover:border-navy/40">
+                Odaberi PNG/JPEG…
+                <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => odaberiLogo(e.target.files?.[0])} />
+              </label>
+              {logo ? (
+                <button type="button" className="text-muted underline" onClick={() => { setLogo(null); setLogoPromijenjen(true); }}>
+                  Ukloni logo
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <p className="mt-1 text-xs text-muted">Najviše 200 KB. Najbolje vodoravni logo s prozirnom pozadinom.</p>
+        </div>
+
+        <div className="space-y-4">
+          <label className="block">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted">Boja</span>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="color"
+                value={boja}
+                disabled={!smijeMijenjati}
+                onChange={(e) => { setBoja(e.target.value.toUpperCase()); setVlastitaBoja(true); }}
+                className="h-9 w-12 cursor-pointer rounded border border-rub bg-white"
+                aria-label="Akcentna boja"
+              />
+              <input
+                value={boja}
+                disabled={!smijeMijenjati}
+                onChange={(e) => { setBoja(e.target.value); setVlastitaBoja(true); }}
+                pattern="#[0-9a-fA-F]{6}"
+                className={`${ulazKlasa} w-28 font-mono`}
+                aria-label="Boja (hex)"
+              />
+              {vlastitaBoja && smijeMijenjati ? (
+                <button type="button" className="text-sm text-muted underline" onClick={() => { setBoja(ZADANA_BOJA); setVlastitaBoja(false); }}>
+                  zadana
+                </button>
+              ) : null}
+            </div>
+          </label>
+          <label className="block">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted">Podnožje</span>
+            <input
+              value={podnozje}
+              disabled={!smijeMijenjati}
+              maxLength={160}
+              onChange={(e) => setPodnozje(e.target.value)}
+              placeholder="npr. www.primjer.hr · +385 1 234 5678"
+              className={`${ulazKlasa} mt-2 w-full`}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={radi}
+          onClick={() => void radnja(() => otvoriPregledIzgleda(tenantId, unos()))}
+          className="rounded-lg border border-rub bg-white px-4 py-2 text-sm font-bold hover:border-navy/40 disabled:opacity-50"
+        >
+          Pregledaj ogledni PDF
+        </button>
+        {smijeMijenjati ? (
+          <>
+            <button
+              type="button"
+              disabled={radi}
+              onClick={() => void radnja(async () => { postavi(await fiskal.spremiBranding(tenantId, unos())); setPoruka("Izgled računa spremljen."); })}
+              className="rounded-lg bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-[#013a86] disabled:opacity-50"
+            >
+              Spremi izgled
+            </button>
+            {spremljeno.azurirano ? (
+              <button
+                type="button"
+                disabled={radi}
+                onClick={() => void radnja(async () => { postavi(await fiskal.obrisiBranding(tenantId)); setPoruka("Vraćen zadani izgled."); })}
+                className="px-2 py-2 text-sm text-muted underline disabled:opacity-50"
+              >
+                Vrati zadani izgled
+              </button>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

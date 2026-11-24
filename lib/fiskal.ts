@@ -20,7 +20,7 @@ export class FiskalGreska extends Error {
 
 async function poziv<T>(
   put: string,
-  opts: { metoda?: "GET" | "POST" | "DELETE"; tijelo?: unknown; tenantId?: number | null } = {},
+  opts: { metoda?: "GET" | "POST" | "PUT" | "DELETE"; tijelo?: unknown; tenantId?: number | null } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {};
   if (opts.tenantId) headers["X-Tenant-Id"] = String(opts.tenantId);
@@ -117,6 +117,21 @@ export interface Proizvod {
   pdvKategorija: string;
   kpd: string | null;
   aktivan: boolean;
+}
+
+/// Izgled PDF računa (backend src/pdf/branding.ts). logo = data URL ili null.
+export interface Branding {
+  boja: string | null;
+  podnozje: string | null;
+  logo: string | null;
+  azurirano: string | null;
+}
+
+/// Tijelo PUT-a i pregleda: logo izostavljen = ne mijenja se, null = ukloni.
+export interface BrandingUnos {
+  boja: string | null;
+  podnozje: string | null;
+  logo?: string | null;
 }
 
 export interface Postavke {
@@ -255,7 +270,32 @@ export const fiskal = {
     poziv<{ id: number }>("/postavke/uredjaj", { metoda: "POST", tijelo: u, tenantId }),
   noviOperater: (tenantId: number, o: { oib: string; ime?: string }) =>
     poziv<{ id: number }>("/postavke/operater", { metoda: "POST", tijelo: o, tenantId }),
+  branding: (tenantId: number) => poziv<Branding>("/postavke/branding", { tenantId }),
+  spremiBranding: (tenantId: number, b: BrandingUnos) =>
+    poziv<Branding>("/postavke/branding", { metoda: "PUT", tijelo: b, tenantId }),
+  obrisiBranding: (tenantId: number) => poziv<Branding>("/postavke/branding", { metoda: "DELETE", tenantId }),
 };
+
+/// Ogledni PDF s (nespremljenim) izgledom — otvara se u novoj kartici.
+/// Prozor se otvara ODMAH (u klik-događaju), inače ga Safari blokira nakon await-a.
+export async function otvoriPregledIzgleda(tenantId: number, b: BrandingUnos): Promise<void> {
+  const prozor = window.open("", "_blank");
+  const r = await fetch(`${API_URL}/postavke/branding/pregled`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "X-Tenant-Id": String(tenantId), "Content-Type": "application/json" },
+    body: JSON.stringify(b),
+  });
+  if (!r.ok) {
+    prozor?.close();
+    const j = (await r.json().catch(() => ({}))) as { greska?: string };
+    throw new FiskalGreska(j.greska ?? `Pregled nije dostupan (${r.status})`, r.status);
+  }
+  const url = URL.createObjectURL(await r.blob());
+  if (prozor) prozor.location.href = url;
+  else window.open(url, "_blank");
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
 
 /// PDF traži X-Tenant-Id zaglavlje (ne može običan <a href>) — fetch + blob.
 export async function otvoriPdf(tenantId: number, racunId: number): Promise<void> {
