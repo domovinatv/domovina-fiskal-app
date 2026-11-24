@@ -1,15 +1,15 @@
 "use client";
 
 // Članovi tenanta — samo vlasnik (backend vraća 403 ostalima). Vlasnik poziva
-// knjigovođu ili operatera (link se prikaže JEDNOM i šalje ga sam), opoziva otvorene
-// pozivnice i deaktivira knjigovođu ili operatera. Vlasnike i sebe ne dira: to radi
+// knjigovođu ili operatera (pozivnica odmah ide e-mailom; link se uz to prikaže JEDNOM
+// kao rezerva), ponovno šalje ili opoziva otvorene pozivnice i deaktivira knjigovođu ili operatera. Vlasnike i sebe ne dira: to radi
 // administrator servisa.
 
 import { useCallback, useEffect, useState } from "react";
 import { Copy } from "lucide-react";
 import { DashboardLjuska } from "@/components/ljuska";
 import { useTenant } from "@/lib/tenant";
-import { fiskal, type Clan, type OtvorenaPozivnica } from "@/lib/fiskal";
+import { fiskal, type Clan, type IzdanaPozivnica, type OtvorenaPozivnica } from "@/lib/fiskal";
 
 export default function ClanoviStranica() {
   return (
@@ -29,7 +29,8 @@ function Clanovi() {
   const [pozivnice, setPozivnice] = useState<OtvorenaPozivnica[]>([]);
   const [greska, setGreska] = useState<string | null>(null);
   const [poruka, setPoruka] = useState<string | null>(null);
-  const [link, setLink] = useState<{ email: string; link: string; istjece: string } | null>(null);
+  const [link, setLink] = useState<(IzdanaPozivnica & { ponovno?: boolean }) | null>(null);
+  const [saljem, setSaljem] = useState<number | null>(null);
   const [forma, setForma] = useState({ email: "", ime: "", uloga: "operater" as "knjigovodja" | "operater" });
   const [radi, setRadi] = useState(false);
 
@@ -68,13 +69,29 @@ function Clanovi() {
         ime: forma.ime.trim() || undefined,
         uloga: forma.uloga,
       });
-      setLink({ email: r.email, link: r.link, istjece: r.istjece });
+      setLink(r);
       setForma({ email: "", ime: "", uloga: forma.uloga });
       await ucitaj();
     } catch (err) {
       setGreska((err as Error).message);
     } finally {
       setRadi(false);
+    }
+  }
+
+  async function posaljiPonovno(id: number) {
+    if (tenantId == null) return;
+    setSaljem(id);
+    setGreska(null);
+    setPoruka(null);
+    setLink(null);
+    try {
+      setLink({ ...(await fiskal.posaljiPonovno(tenantId, id)), ponovno: true });
+      await ucitaj();
+    } catch (err) {
+      setGreska((err as Error).message);
+    } finally {
+      setSaljem(null);
     }
   }
 
@@ -161,6 +178,17 @@ function Clanovi() {
                 <span className="text-muted">
                   {ULOGE[p.uloga] ?? p.uloga} · izdao {p.stvorioTip} · vrijedi do {datum(p.istjece)}
                 </span>
+                {tenantId != null && p.uloga !== "vlasnik" ? (
+                  <button
+                    type="button"
+                    disabled={saljem != null}
+                    title="Nova pozivnica ide mailom; stari link prestaje vrijediti."
+                    className="text-xs text-navy hover:text-crvena disabled:opacity-50"
+                    onClick={() => void posaljiPonovno(p.id)}
+                  >
+                    {saljem === p.id ? "Šaljem…" : "Pošalji ponovno"}
+                  </button>
+                ) : null}
                 {tenantId != null ? (
                   <button
                     type="button"
@@ -179,7 +207,7 @@ function Clanovi() {
       <section className="mt-8 max-w-lg rounded-xl border border-rub bg-povrsina p-5">
         <h2 className="font-semibold">Pozovi člana</h2>
         <p className="mt-1 text-sm text-muted">
-          Dobit ćeš link koji pošalješ sam (mail, poruka). Link se prikazuje samo jednom.
+          Pozivnica odmah ide e-mailom. Link vrijedi 72 sata i jednom; ako mail ne stigne, pošalji ga ponovno.
         </p>
         <form onSubmit={pozovi} className="mt-3 grid gap-3 sm:grid-cols-2">
           <input
@@ -210,14 +238,24 @@ function Clanovi() {
             disabled={radi}
             className="rounded-lg bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-[#013a86] disabled:opacity-50"
           >
-            {radi ? "Izdajem…" : "Izdaj pozivnicu"}
+            {radi ? "Šaljem…" : "Pošalji pozivnicu"}
           </button>
         </form>
         {link ? (
           <div className="mt-4 rounded-lg border border-rub bg-white p-3 text-sm">
-            <p>
-              Pozivnica za <strong>{link.email}</strong> (vrijedi do {datum(link.istjece)}):
-            </p>
+            {link.poslano ? (
+              <p>
+                Pozivnica {link.ponovno ? "je ponovno poslana" : "je poslana"} na <strong>{link.email}</strong>
+                {link.ponovno ? " (stari link više ne vrijedi)" : ""}, vrijedi do {datum(link.istjece)}. Ako zatreba,
+                link možeš poslati i sam (prikazuje se samo sada):
+              </p>
+            ) : (
+              <p>
+                <span className="text-opasnost">E-mail nije poslan</span>
+                {link.emailGreska ? <span className="text-muted"> ({link.emailGreska})</span> : null}. Pozivnica za{" "}
+                <strong>{link.email}</strong> ipak vrijedi do {datum(link.istjece)} — kopiraj link i pošalji ga sam:
+              </p>
+            )}
             <div className="mt-2 flex items-center gap-2">
               <input readOnly value={link.link} className="flex-1 rounded border border-rub px-2 py-1 font-mono text-xs" onFocus={(e) => e.target.select()} />
               <button

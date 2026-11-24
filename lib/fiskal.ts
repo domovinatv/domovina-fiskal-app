@@ -196,6 +196,16 @@ export interface Clan {
   ja: boolean;
 }
 
+/** Odgovor na izdavanje: pozivnica je odmah poslana mailom (`poslano`); link je rezerva, vidi se samo ovdje. */
+export interface IzdanaPozivnica {
+  id: number;
+  email: string;
+  istjece: string;
+  link: string;
+  poslano: boolean;
+  emailGreska: string | null;
+}
+
 export interface OtvorenaPozivnica {
   id: number;
   email: string;
@@ -254,11 +264,14 @@ export const fiskal = {
   clanovi: (tenantId: number) =>
     poziv<{ clanovi: Clan[]; pozivnice: OtvorenaPozivnica[] }>("/clanovi", { tenantId }),
   pozovi: (tenantId: number, p: { email: string; ime?: string; uloga: "knjigovodja" | "operater" }) =>
-    poziv<{ id: number; email: string; istjece: string; link: string }>("/clanovi/pozivnica", {
+    poziv<IzdanaPozivnica>("/clanovi/pozivnica", {
       metoda: "POST",
       tijelo: p,
       tenantId,
     }),
+  // Nova pozivnica istih podataka ide mailom; stari link prestaje vrijediti.
+  posaljiPonovno: (tenantId: number, id: number) =>
+    poziv<IzdanaPozivnica>(`/clanovi/pozivnica/${id}/posalji-ponovno`, { metoda: "POST", tenantId }),
   opozoviPozivnicu: (tenantId: number, id: number) =>
     poziv<{ ok: boolean }>(`/clanovi/pozivnica/${id}/opozovi`, { metoda: "POST", tenantId }),
   deaktivirajClana: (tenantId: number, id: number) =>
